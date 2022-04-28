@@ -31,7 +31,7 @@ public:
     str get_input(str);
     data_vector read_database_to_vec();
     int get_user_index(str);
-    void update_user_data(str, str, str);
+    void update_user_data(str, str password="", str admin="");
     void rewrite_database();
     str hash_str(str);
     str random_password();

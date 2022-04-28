@@ -17,11 +17,11 @@ class User {
     str password;      //??????
     int admin;
     public:
-    database database;
+    database mode_database;
     int password_changes;
     str login;
-
-    User(str_vector data){
+    User(str_vector data, database DB){
+        mode_database=DB;
         login = data[0];
         password = data[1];  //hash za dlugi wtf
         admin = std::stoi(data[2]);
@@ -34,6 +34,6 @@ class User {
 
 class Admin : public User{
     public:
-    Admin(str_vector data) : User(data){};
+    Admin(str_vector data, database DB) : User(data, DB){};
     void add_user_to_database(str alogin, str admin);
 };
