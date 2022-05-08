@@ -3,37 +3,41 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <database.h>
+#include "database.h"
+
 
 typedef std::string str;
-typedef std::tuple<str, str, int, int> loginTuple;
 typedef std::vector<str> str_vector;
 typedef std::vector<str_vector> data_vector;
-std::hash<str> hash_pass;
 
-
-class User {
+// sprawdzić czy przydają się wszystkie atrybuty
+class UserMode {
     protected:
-    str password;      //??????
-    int admin;
+    str admin;
     public:
-    database mode_database;
-    int password_changes;
+    str_vector user_data;
+    Database mode_database;
     str login;
-    User(str_vector data, database DB){
+    str actions = "\nHere's what you can do:\n1 - open a file\n2 - change your password\n3 - exit\n";
+    UserMode(str_vector data, const Database& DB){
+        user_data = data;
         mode_database=DB;
-        login = data[0];
-        password = data[1];  //hash za dlugi wtf
-        admin = std::stoi(data[2]);
-        password_changes = std::stoi(data[3]);
+        login = data[mode_database.login_pos];
+        admin = data[mode_database.admin_pos];
     };
-    void change_password();
-
+    bool change_password();
+    void check_password_change();
+    void the_mode();
+    void read_file();
 };
 
 
-class Admin : public User{
+class AdminMode : public UserMode{
     public:
-    Admin(str_vector data, database DB) : User(data, DB){};
-    void add_user_to_database(str alogin, str admin);
+    AdminMode(str_vector data, const Database& DB) : UserMode(data, DB){};
+    str actions = "\nHere's what you can do:\n1 - open a file\n2 - change your password\n3 - add user\n4 - delete user\n5 - reset user's password\n6 - exit\n";
+    void add_user();
+    void delete_user();
+    void reset_password();
+    void the_mode();
 };

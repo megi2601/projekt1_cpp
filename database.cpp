@@ -5,115 +5,217 @@
 #include <sstream>
 #include <algorithm>
 #include <experimental/random>
-#include <database.h>
+#include "database.h"
+#include <stdio.h>
+#include <string.h>
+#include <exception>
 
 
 typedef std::string str;
-typedef std::tuple<str, str, int, int> loginTuple;
-typedef std::ofstream out;
-typedef std::ifstream in;
 typedef std::vector<str> str_vector;
 typedef std::vector<str_vector> data_vector;
 std::hash<str> hash_pass;
 
+class login_exception : public std::exception
+{
+  virtual const char* what() const throw()
+  {
+    return "Login not found in the database.";
+  }
+} login_not_found;
+
+
+class password_exception : public std::exception
+{
+  virtual const char* what() const throw()
+  {
+    return "Wrong password.";
+  }
+} wrong_password;
+
 template<typename T>
-str num_to_str(T num){
+str Database::num_to_str(T num){
     char str[256] = "";
     std::snprintf(str, sizeof str, "%zu", num);
     return str;
 }
 
+data_vector Database::read_database_to_vec(){
+    std::ifstream file_handle;
+    file_handle.open(filename);
+    str line;
+    data_vector data;
+    while(std::getline(file_handle, line)){
+        data.push_back(read_user_line(line));
+    }
+    return data;
+}
 
-str database::hash_str(str string){
+str Database::hash_str(str string){
     return num_to_str(hash_pass(string));
 }
 
-str database::get_input(str prompt){
+
+str Database::get_input(str prompt){
     std::cout<<"Enter "<<prompt<<":"<<std::endl;
     str input;
-    std::getline(std::cin, input);
+    std::cin>>input;
     return input;
 }
 
-str database::random_password(){
+
+
+str Database::random_password(){
     str password;
     for(int i=0; i<password_length; i++){
-        int n = std::experimental::randint(0, int(password_chars.length())); //int?
+        int n = std::experimental::randint(0, int(password_chars.length())-1);
         password+=password_chars[n];
     }
     return password;
 }
 
-void database::update_user_data(str login, str password="", str admin=""){
-    data_vector data = read_database_to_vec();
-    int index = get_user_index(login);
-    str_vector user_vec = data[index];
-    if(!password.empty()) user_vec[password_pos]=hash_str(password);
-    if(!admin.empty()) user_vec[admin_pos] = admin;
-    data[index] = user_vec;
-    rewrite_database();
+bool Database::is_in_database(str login){
+    try{get_user_index(login); return true;}
+    catch(login_exception&){return false;}
 }
 
-int database::get_user_index(str login){
+
+
+bool Database::change_password(str login, str new_pass, bool reset){
+    data_vector data = read_database_to_vec();
+    str_vector user_data = get_user_data(login);
+    str hash = hash_str(new_pass);
+    if(!new_pass.empty() && strcmp(user_data[password_pos].c_str(), hash.c_str())!=0){
+        user_data[password_pos] = hash;
+        if(reset){
+            user_data[password_changes_pos] = "0";
+        }
+        else{
+            str new_changes = num_to_str(std::stoi(user_data[password_changes_pos])+1);
+            user_data[password_changes_pos] = new_changes;
+        }
+        data[get_user_index(login)] = user_data;
+        rewrite_database(data);
+        return true;
+    }
+    return false;
+}
+
+
+int Database::get_user_index(str login){
     data_vector data = read_database_to_vec();
     for(int i=0; i<data.size(); i++){
         if(data[i][login_pos]==login){
             return i;
         }
-    //throw !!!
-    //return 0;
+    }
+    throw login_not_found;
 }
 
 
-bool verify_password(str_vector vec, str input_password){
-    return vec[1] == num_to_str(hash_pass(input_password));
+void Database::add_user(str login, str password, str admin){
+    data_vector data = read_database_to_vec();
+    str hash = hash_str(password);
+    str_vector user(records_num);
+    user[login_pos] = login;
+    user[password_pos] = hash;
+    user[admin_pos] = admin;
+    user[password_changes_pos] = "0";
+    data.push_back(user);
+    rewrite_database(data);
+}
+
+void Database::delete_user(str login){
+    data_vector data = read_database_to_vec(), new_data;
+    bool found = false;
+    for(str_vector el:data){
+        if(el[login_pos] != login){new_data.push_back(el);}
+        else{found = true;}
+    }
+    if(!found){throw login_not_found;}
+    rewrite_database(new_data);
 }
 
 
+str_vector Database::get_user_data(str login){
+    data_vector data = read_database_to_vec();
+    return data[get_user_index(login)];
+}
 
-str_vector get_user_data(str line){
+
+bool Database::verify_password(str login, str pass){
+    return get_user_data(login)[password_pos] == num_to_str(hash_pass(pass));
+}
+
+void Database::verify_login(str login, str password){
+    str db_password = get_user_data(login)[password_pos];
+    if(strcmp(db_password.c_str(), hash_str(password).c_str())!=0){
+        throw wrong_password;
+    }
+}
+
+
+str Database::vector_to_string(str_vector vec){
+    str s;
+    for(str el:vec) s+=el+",";
+    return s;
+}
+
+void Database::rewrite_database(data_vector data){
+    std::ofstream out;
+    out.open(filename);
+    for(str_vector el:data){
+        str s = vector_to_string(el);
+        out<<s<<"\n";
+    }
+    out.close();
+}
+
+str_vector Database::read_user_line(str line){
     std::istringstream sline;
     str_vector vec;
     sline.str(line);
-    for (str substr; std::getline(sline, substr, ','); ) {
+    for (str substr; std::getline(sline, substr, ',');) {
         vec.push_back(substr);
     }
     return vec;
 }
 
 
-str_vector find_in_database(str login){
-    data_vector data = read_database_to_vec();
-    for(str_vector el:data){
-        if(std::find(el.begin(), el.end(), login) != el.end()){
-            return el;
-        }
+void Database::read_file(str filename){
+    std::ifstream in;
+    in.open(filename);
+    if(!in.good()){
+        std::cout<<"\nSomething wrong with the file, try again.\n"<<std::endl;
+        return;
     }
-    str_vector x = {"0"};   //throw
-    return x;
+    str line;
+    std::cout<<"\n *** start *** \n";
+    while(std::getline(in, line)){
+        std::cout<<line<<std::endl;
+    }
+    std::cout<<"*** end *** \n";
 }
 
-bool already_in_database(str login){
-    data_vector data = read_database_to_vec();
-    for(str_vector el:data){
-        if(std::find(el.begin(), el.end(), login) != el.end()){
-            return true;
-        }
-    }
-    return false;
-    }
+bool Database::correct_database_file(){
+    std::ifstream in(filename);
+    return in.good();
+}
 
+void Database::create_database_file(){
+    std::ofstream out;
+    out.open(filename);
+    out.close();
+    std::cout<<"Create a database file. Enter login of the first admin:\n";
+    str login;
+    std::cin>>login;
+    str password = random_password();
+    std::cout<<login<<"'s new password is:\n"<<password<<"\n";
+    add_user(login, password, "1");
+}
 
-
-void log_in(str_vector data){
-    if(std::stoi(data[2])){
-        Admin user(data);
-        check_password_change(user);
-        admin_mode(user);
-    }
-    else{
-        User user(data);
-        check_password_change(user);
-        user_mode(user);
-    }
+bool Database::empty_file(){
+    std::ifstream f;
+    f.open(filename);
+    return f.peek() == std::ifstream::traits_type::eof();
 }
